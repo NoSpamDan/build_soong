@@ -293,6 +293,7 @@ type productVariables struct {
 
 	TargetFSConfigGen []string `json:",omitempty"`
 
+	// include Candy variables
 	Candy android.ProductVariables
 }
 

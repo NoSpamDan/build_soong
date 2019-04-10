@@ -41,12 +41,6 @@ type command struct {
 	// description for the flag (to display when running help)
 	description string
 
-	// Forces the status output into dumb terminal mode.
-	forceDumbOutput bool
-
-	// Sets a prefix string to use for filenames of log files.
-	logsPrefix string
-
 	// Creates the build configuration based on the args and build context.
 	config func(ctx build.Context, args ...string) build.Config
 
@@ -67,30 +61,22 @@ var commands []command = []command{
 		config: func(ctx build.Context, args ...string) build.Config {
 			return build.NewConfig(ctx, args...)
 		},
-		stdio: stdio,
-		run:   make,
+		stdio: func() terminal.StdioInterface {
+			return terminal.StdioImpl{}
+		},
+		run: make,
 	}, {
-		flag:            "--dumpvar-mode",
-		description:     "print the value of the legacy make variable VAR to stdout",
-		forceDumbOutput: true,
-		logsPrefix:      "dumpvars-",
-		config:          dumpVarConfig,
-		stdio:           customStdio,
-		run:             dumpVar,
+		flag:        "--dumpvar-mode",
+		description: "print the value of the legacy make variable VAR to stdout",
+		config:      dumpVarConfig,
+		stdio:       customStdio,
+		run:         dumpVar,
 	}, {
-		flag:            "--dumpvars-mode",
-		description:     "dump the values of one or more legacy make variables, in shell syntax",
-		forceDumbOutput: true,
-		logsPrefix:      "dumpvars-",
-		config:          dumpVarConfig,
-		stdio:           customStdio,
-		run:             dumpVars,
-	}, {
-		flag:        "--build-mode",
-		description: "build modules based on the specified build action",
-		config:      buildActionConfig,
-		stdio:       stdio,
-		run:         make,
+		flag:        "--dumpvars-mode",
+		description: "dump the values of one or more legacy make variables, in shell syntax",
+		config:      dumpVarConfig,
+		stdio:       customStdio,
+		run:         dumpVars,
 	},
 }
 
@@ -102,30 +88,32 @@ func indexList(s string, list []string) int {
 			return i
 		}
 	}
-
 	return -1
 }
 
+// inList returns true if one or more of s is in the list.
 func inList(s string, list []string) bool {
 	return indexList(s, list) != -1
 }
 
+// Main execution of soong_ui. The command format is as follows:
+//
+//    soong_ui <command> [<arg 1> <arg 2> ... <arg n>]
+//
+// Command is the type of soong_ui execution. Only one type of
+// execution is specified. The args are specific to the command.
 func main() {
-	var stdio terminal.StdioInterface
-	stdio = terminal.StdioImpl{}
+	c, args := getCommand(os.Args)
+	if c == nil {
+		fmt.Fprintf(os.Stderr, "The `soong` native UI is not yet available.\n")
+		os.Exit(1)
+	}
 
-	output := terminal.NewStatusOutput(c.stdio().Stdout(), os.Getenv("NINJA_STATUS"), c.forceDumbOutput,
-		build.OsEnvironment().IsEnvTrue("ANDROID_QUIET_BUILD"))
+	writer := terminal.NewWriter(c.stdio())
+	defer writer.Finish()
 
 	log := logger.New(c.stdio().Stdout())
 	defer log.Cleanup()
-
-	if len(os.Args) < 2 || !(inList("--make-mode", os.Args) ||
-		os.Args[1] == "--dumpvars-mode" ||
-		os.Args[1] == "--dumpvar-mode") {
-
-		log.Fatalln("The `soong` native UI is not yet available.")
-	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -155,12 +143,8 @@ func main() {
 		Writer:  c.stdio().Stdout(),
 		Status:  stat,
 	}}
-	var config build.Config
-	if os.Args[1] == "--dumpvars-mode" || os.Args[1] == "--dumpvar-mode" {
-		config = build.NewConfig(buildCtx)
-	} else {
-		config = build.NewConfig(buildCtx, os.Args[1:]...)
-	}
+
+	config := c.config(buildCtx, args...)
 
 	build.SetupOutDir(buildCtx, config)
 
@@ -202,28 +186,7 @@ func main() {
 	defer f.Shutdown()
 	build.FindSources(buildCtx, config, f)
 
-	if os.Args[1] == "--dumpvar-mode" {
-		dumpVar(buildCtx, config, os.Args[2:])
-	} else if os.Args[1] == "--dumpvars-mode" {
-		dumpVars(buildCtx, config, os.Args[2:])
-	} else {
-		if config.IsVerbose() {
-			writer.Print("! The argument `showcommands` is no longer supported.")
-			writer.Print("! Instead, the verbose log is always written to a compressed file in the output dir:")
-			writer.Print("!")
-			writer.Print(fmt.Sprintf("!   gzip -cd %s/verbose.log.gz | less -R", logsDir))
-			writer.Print("!")
-			writer.Print("! Older versions are saved in verbose.log.#.gz files")
-			writer.Print("")
-			time.Sleep(5 * time.Second)
-		}
-
-		toBuild := build.BuildAll
-		if config.Checkbuild() {
-			toBuild |= build.RunBuildTests
-		}
-		build.Build(buildCtx, config, toBuild)
-	}
+	c.run(buildCtx, config, args, logsDir)
 }
 
 func fixBadDanglingLink(ctx build.Context, name string) {
@@ -240,7 +203,7 @@ func fixBadDanglingLink(ctx build.Context, name string) {
 	}
 }
 
-func dumpVar(ctx build.Context, config build.Config, args []string) {
+func dumpVar(ctx build.Context, config build.Config, args []string, _ string) {
 	flags := flag.NewFlagSet("dumpvar", flag.ExitOnError)
 	flags.Usage = func() {
 		fmt.Fprintf(os.Stderr, "usage: %s --dumpvar-mode [--abs] <VAR>\n\n", os.Args[0])
@@ -290,7 +253,7 @@ func dumpVar(ctx build.Context, config build.Config, args []string) {
 	}
 }
 
-func dumpVars(ctx build.Context, config build.Config, args []string) {
+func dumpVars(ctx build.Context, config build.Config, args []string, _ string) {
 	flags := flag.NewFlagSet("dumpvars", flag.ExitOnError)
 	flags.Usage = func() {
 		fmt.Fprintf(os.Stderr, "usage: %s --dumpvars-mode [--vars=\"VAR VAR ...\"]\n\n", os.Args[0])
@@ -370,13 +333,13 @@ func dumpVarConfig(ctx build.Context, args ...string) build.Config {
 func make(ctx build.Context, config build.Config, _ []string, logsDir string) {
 	if config.IsVerbose() {
 		writer := ctx.Writer
-		fmt.Fprintln(writer, "! The argument `showcommands` is no longer supported.")
-		fmt.Fprintln(writer, "! Instead, the verbose log is always written to a compressed file in the output dir:")
-		fmt.Fprintln(writer, "!")
-		fmt.Fprintf(writer, "!   gzip -cd %s/verbose.log.gz | less -R\n", logsDir)
-		fmt.Fprintln(writer, "!")
-		fmt.Fprintln(writer, "! Older versions are saved in verbose.log.#.gz files")
-		fmt.Fprintln(writer, "")
+		writer.Print("! The argument `showcommands` is no longer supported.")
+		writer.Print("! Instead, the verbose log is always written to a compressed file in the output dir:")
+		writer.Print("!")
+		writer.Print(fmt.Sprintf("!   gzip -cd %s/verbose.log.gz | less -R", logsDir))
+		writer.Print("!")
+		writer.Print("! Older versions are saved in verbose.log.#.gz files")
+		writer.Print("")
 		time.Sleep(5 * time.Second)
 	}
 

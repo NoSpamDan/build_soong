@@ -16,20 +16,19 @@ package terminal
 
 import (
 	"fmt"
-	"io"
 
 	"android/soong/ui/status"
 )
 
 type dumbStatusOutput struct {
-	writer    io.Writer
+	writer    Writer
 	formatter formatter
 }
 
 // NewDumbStatusOutput returns a StatusOutput that represents the
 // current build status similarly to Ninja's built-in terminal
 // output.
-func NewDumbStatusOutput(w io.Writer, formatter formatter) status.StatusOutput {
+func NewDumbStatusOutput(w Writer, formatter formatter) status.StatusOutput {
 	return &dumbStatusOutput{
 		writer:    w,
 		formatter: formatter,

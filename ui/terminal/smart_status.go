@@ -16,7 +16,6 @@ package terminal
 
 import (
 	"fmt"
-	"io"
 	"strings"
 	"sync"
 
@@ -24,7 +23,7 @@ import (
 )
 
 type smartStatusOutput struct {
-	writer    io.Writer
+	writer    Writer
 	formatter formatter
 
 	lock sync.Mutex
@@ -35,7 +34,7 @@ type smartStatusOutput struct {
 // NewSmartStatusOutput returns a StatusOutput that represents the
 // current build status similarly to Ninja's built-in terminal
 // output.
-func NewSmartStatusOutput(w io.Writer, formatter formatter) status.StatusOutput {
+func NewSmartStatusOutput(w Writer, formatter formatter) status.StatusOutput {
 	return &smartStatusOutput{
 		writer:    w,
 		formatter: formatter,
@@ -134,7 +133,7 @@ func (s *smartStatusOutput) statusLine(str string) {
 	// Run this on every line in case the window has been resized while
 	// we're printing. This could be optimized to only re-run when we get
 	// SIGWINCH if it ever becomes too time consuming.
-	if max, ok := termWidth(s.writer); ok {
+	if max, ok := s.writer.termWidth(); ok {
 		if len(str) > max {
 			// TODO: Just do a max. Ninja elides the middle, but that's
 			// more complicated and these lines aren't that important.

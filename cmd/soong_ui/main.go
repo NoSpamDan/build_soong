@@ -55,10 +55,7 @@ func main() {
 		stdio = terminal.NewCustomStdio(os.Stdin, os.Stderr, os.Stderr)
 	}
 
-	writer := terminal.NewWriter(stdio)
-	defer writer.Finish()
-
-	log := logger.New(writer)
+	log := logger.New(c.stdio().Stdout())
 	defer log.Cleanup()
 
 	if len(os.Args) < 2 || !(inList("--make-mode", os.Args) ||
@@ -78,7 +75,7 @@ func main() {
 
 	stat := &status.Status{}
 	defer stat.Finish()
-	stat.AddOutput(terminal.NewStatusOutput(writer, os.Getenv("NINJA_STATUS"),
+	stat.AddOutput(terminal.NewStatusOutput(c.stdio().Stdout(), os.Getenv("NINJA_STATUS"),
 		build.OsEnvironment().IsEnvTrue("ANDROID_QUIET_BUILD")))
 	stat.AddOutput(trace.StatusTracer())
 
@@ -93,7 +90,7 @@ func main() {
 		Logger:  log,
 		Metrics: met,
 		Tracer:  trace,
-		Writer:  writer,
+		Writer:  c.stdio().Stdout(),
 		Status:  stat,
 	}}
 	var config build.Config
@@ -295,4 +292,60 @@ func dumpVars(ctx build.Context, config build.Config, args []string) {
 		}
 		fmt.Printf("%s%s='%s'\n", *absVarPrefix, name, strings.Join(res, " "))
 	}
+}
+
+func customStdio() terminal.StdioInterface {
+	return terminal.NewCustomStdio(os.Stdin, os.Stderr, os.Stderr)
+}
+
+// dumpVarConfig does not require any arguments to be parsed by the NewConfig.
+func dumpVarConfig(ctx build.Context, args ...string) build.Config {
+	return build.NewConfig(ctx)
+}
+
+func make(ctx build.Context, config build.Config, _ []string, logsDir string) {
+	if config.IsVerbose() {
+		writer := ctx.Writer
+		fmt.Fprintln(writer, "! The argument `showcommands` is no longer supported.")
+		fmt.Fprintln(writer, "! Instead, the verbose log is always written to a compressed file in the output dir:")
+		fmt.Fprintln(writer, "!")
+		fmt.Fprintf(writer, "!   gzip -cd %s/verbose.log.gz | less -R\n", logsDir)
+		fmt.Fprintln(writer, "!")
+		fmt.Fprintln(writer, "! Older versions are saved in verbose.log.#.gz files")
+		fmt.Fprintln(writer, "")
+		time.Sleep(5 * time.Second)
+	}
+
+	toBuild := build.BuildAll
+	if config.Checkbuild() {
+		toBuild |= build.RunBuildTests
+	}
+	build.Build(ctx, config, toBuild)
+}
+
+// getCommand finds the appropriate command based on args[1] flag. args[0]
+// is the soong_ui filename.
+func getCommand(args []string) (*command, []string) {
+	if len(args) < 2 {
+		return nil, args
+	}
+
+	for _, c := range commands {
+		if c.flag == args[1] {
+			return &c, args[2:]
+		}
+
+		// special case for --make-mode: if soong_ui was called from
+		// build/make/core/main.mk, the makeparallel with --ninja
+		// option specified puts the -j<num> before --make-mode.
+		// TODO: Remove this hack once it has been fixed.
+		if c.flag == makeModeFlagName {
+			if inList(makeModeFlagName, args) {
+				return &c, args[1:]
+			}
+		}
+	}
+
+	// command not found
+	return nil, args
 }

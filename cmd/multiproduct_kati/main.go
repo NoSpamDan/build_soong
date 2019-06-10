@@ -158,7 +158,7 @@ type mpContext struct {
 func main() {
 	stdio := terminal.StdioImpl{}
 
-	output := terminal.NewStatusOutput(stdio.Stdout(), "", false,
+	output := terminal.NewStatusOutput(stdio.Stdout(), "",
 		build.OsEnvironment().IsEnvTrue("ANDROID_QUIET_BUILD"))
 
 	log := logger.New(output)
@@ -174,8 +174,7 @@ func main() {
 
 	stat := &status.Status{}
 	defer stat.Finish()
-	stat.AddOutput(terminal.NewStatusOutput(stdio.Stdout(), "",
-		build.OsEnvironment().IsEnvTrue("ANDROID_QUIET_BUILD")))
+	stat.AddOutput(output)
 
 	var failures failureCount
 	stat.AddOutput(&failures)
@@ -190,7 +189,7 @@ func main() {
 		Context: ctx,
 		Logger:  log,
 		Tracer:  trace,
-		Writer:  stdio.Stdout(),
+		Writer:  output,
 		Status:  stat,
 	}}
 
@@ -343,7 +342,7 @@ func main() {
 	} else if failures > 1 {
 		log.Fatalf("%d failures", failures)
 	} else {
-		fmt.Fprintln(stdio.Stdout(), "Success")
+		fmt.Fprintln(output, "Success")
 	}
 }
 
@@ -468,3 +467,8 @@ func (f *failureCount) Message(level status.MsgLevel, message string) {
 }
 
 func (f *failureCount) Flush() {}
+
+func (f *failureCount) Write(p []byte) (int, error) {
+	// discard writes
+	return len(p), nil
+}

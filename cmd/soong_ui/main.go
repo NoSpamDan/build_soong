@@ -153,14 +153,12 @@ func main() {
 	}
 
 	os.MkdirAll(logsDir, 0777)
-	log.SetOutput(filepath.Join(logsDir, c.logsPrefix+"soong.log"))
-	trace.SetOutput(filepath.Join(logsDir, c.logsPrefix+"build.trace"))
-	stat.AddOutput(status.NewVerboseLog(log, filepath.Join(logsDir, c.logsPrefix+"verbose.log")))
-	stat.AddOutput(status.NewErrorLog(log, filepath.Join(logsDir, c.logsPrefix+"error.log")))
-	stat.AddOutput(status.NewProtoErrorLog(log, filepath.Join(logsDir, c.logsPrefix+"build_error")))
-	stat.AddOutput(status.NewCriticalPath(log))
+	log.SetOutput(filepath.Join(logsDir, "soong.log"))
+	trace.SetOutput(filepath.Join(logsDir, "build.trace"))
+	stat.AddOutput(status.NewVerboseLog(log, filepath.Join(logsDir, "verbose.log")))
+	stat.AddOutput(status.NewErrorLog(log, filepath.Join(logsDir, "error.log")))
 
-	defer met.Dump(filepath.Join(logsDir, c.logsPrefix+"soong_metrics"))
+	defer met.Dump(filepath.Join(logsDir, "soong_metrics"))
 
 	if start, ok := os.LookupEnv("TRACE_BEGIN_SOONG"); ok {
 		if !strings.HasSuffix(start, "N") {

@@ -158,7 +158,7 @@ type mpContext struct {
 func main() {
 	stdio := terminal.StdioImpl{}
 
-	output := terminal.NewStatusOutput(stdio.Stdout(), "",
+	output := terminal.NewStatusOutput(stdio.Stdout(), "", false,
 		build.OsEnvironment().IsEnvTrue("ANDROID_QUIET_BUILD"))
 
 	log := logger.New(output)

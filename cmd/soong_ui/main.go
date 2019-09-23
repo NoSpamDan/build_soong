@@ -32,6 +32,70 @@ import (
 	"android/soong/ui/tracer"
 )
 
+// A command represents an operation to be executed in the soong build
+// system.
+type command struct {
+	// the flag name (must have double dashes)
+	flag string
+
+	// description for the flag (to display when running help)
+	description string
+
+	// Forces the status output into dumb terminal mode.
+	forceDumbOutput bool
+
+	// Sets a prefix string to use for filenames of log files.
+	logsPrefix string
+
+	// Creates the build configuration based on the args and build context.
+	config func(ctx build.Context, args ...string) build.Config
+
+	// Returns what type of IO redirection this Command requires.
+	stdio func() terminal.StdioInterface
+
+	// run the command
+	run func(ctx build.Context, config build.Config, args []string, logsDir string)
+}
+
+const makeModeFlagName = "--make-mode"
+
+// list of supported commands (flags) supported by soong ui
+var commands []command = []command{
+	{
+		flag:        makeModeFlagName,
+		description: "build the modules by the target name (i.e. soong_docs)",
+		config: func(ctx build.Context, args ...string) build.Config {
+			return build.NewConfig(ctx, args...)
+		},
+		stdio: stdio,
+		run:   make,
+	}, {
+		flag:            "--dumpvar-mode",
+		description:     "print the value of the legacy make variable VAR to stdout",
+		forceDumbOutput: true,
+		logsPrefix:      "dumpvars-",
+		config:          dumpVarConfig,
+		stdio:           customStdio,
+		run:             dumpVar,
+	}, {
+		flag:            "--dumpvars-mode",
+		description:     "dump the values of one or more legacy make variables, in shell syntax",
+		forceDumbOutput: true,
+		logsPrefix:      "dumpvars-",
+		config:          dumpVarConfig,
+		stdio:           customStdio,
+		run:             dumpVars,
+	}, {
+		flag:        "--build-mode",
+		description: "build modules based on the specified build action",
+		config:      buildActionConfig,
+		stdio:       stdio,
+		run:         make,
+	},
+}
+
+// indexList returns the index of first found s. -1 is return if s is not
+// found.
 func indexList(s string, list []string) int {
 	for i, l := range list {
 		if l == s {
@@ -50,10 +114,8 @@ func main() {
 	var stdio terminal.StdioInterface
 	stdio = terminal.StdioImpl{}
 
-	// dumpvar uses stdout, everything else should be in stderr
-	if os.Args[1] == "--dumpvar-mode" || os.Args[1] == "--dumpvars-mode" {
-		stdio = terminal.NewCustomStdio(os.Stdin, os.Stderr, os.Stderr)
-	}
+	output := terminal.NewStatusOutput(c.stdio().Stdout(), os.Getenv("NINJA_STATUS"), c.forceDumbOutput,
+		build.OsEnvironment().IsEnvTrue("ANDROID_QUIET_BUILD"))
 
 	log := logger.New(c.stdio().Stdout())
 	defer log.Cleanup()
@@ -108,12 +170,14 @@ func main() {
 	}
 
 	os.MkdirAll(logsDir, 0777)
-	log.SetOutput(filepath.Join(logsDir, "soong.log"))
-	trace.SetOutput(filepath.Join(logsDir, "build.trace"))
-	stat.AddOutput(status.NewVerboseLog(log, filepath.Join(logsDir, "verbose.log")))
-	stat.AddOutput(status.NewErrorLog(log, filepath.Join(logsDir, "error.log")))
+	log.SetOutput(filepath.Join(logsDir, c.logsPrefix+"soong.log"))
+	trace.SetOutput(filepath.Join(logsDir, c.logsPrefix+"build.trace"))
+	stat.AddOutput(status.NewVerboseLog(log, filepath.Join(logsDir, c.logsPrefix+"verbose.log")))
+	stat.AddOutput(status.NewErrorLog(log, filepath.Join(logsDir, c.logsPrefix+"error.log")))
+	stat.AddOutput(status.NewProtoErrorLog(log, filepath.Join(logsDir, c.logsPrefix+"build_error")))
+	stat.AddOutput(status.NewCriticalPath(log))
 
-	defer met.Dump(filepath.Join(logsDir, "build_metrics"))
+	defer met.Dump(filepath.Join(logsDir, c.logsPrefix+"soong_metrics"))
 
 	if start, ok := os.LookupEnv("TRACE_BEGIN_SOONG"); ok {
 		if !strings.HasSuffix(start, "N") {

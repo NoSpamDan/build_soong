@@ -158,7 +158,10 @@ type mpContext struct {
 func main() {
 	stdio := terminal.StdioImpl{}
 
-	log := logger.New(stdio.Stdout())
+	output := terminal.NewStatusOutput(stdio.Stdout(), "", false,
+		build.OsEnvironment().IsEnvTrue("ANDROID_QUIET_BUILD"))
+
+	log := logger.New(output)
 	defer log.Cleanup()
 
 	flag.Parse()
@@ -389,7 +392,7 @@ func buildProduct(mpctx *mpContext, product string) {
 		Thread:  mpctx.Tracer.NewThread(product),
 		Status:  &status.Status{},
 	}}
-	ctx.Status.AddOutput(terminal.NewStatusOutput(ctx.Writer, "",
+	ctx.Status.AddOutput(terminal.NewStatusOutput(ctx.Writer, "", false,
 		build.OsEnvironment().IsEnvTrue("ANDROID_QUIET_BUILD")))
 
 	config := build.NewConfig(ctx, flag.Args()...)

@@ -27,8 +27,6 @@ import (
 
 	"github.com/google/blueprint/bootstrap"
 	"github.com/google/blueprint/proptools"
-
-	"candy/soong/android"
 )
 
 var Bool = proptools.Bool
@@ -486,14 +484,6 @@ func (c *config) DeviceResourceOverlays() []string {
 
 func (c *config) ProductResourceOverlays() []string {
 	return c.productVariables.ProductResourceOverlays
-}
-
-func (c *config) JavaSourceOverlays() string {
-	return String(c.productVariables.Candy.Java_Source_Overlays)
-}
-
-func (c *config) JavaSourceOverlayModuleWhitelist() []string {
-	return android.CandyConfig.JavaSourceOverlayModuleWhitelist
 }
 
 func (c *config) PlatformVersionName() string {

@@ -286,10 +286,6 @@ func (a *AndroidApp) dexBuildActions(ctx android.ModuleContext) android.Path {
 	a.dexpreopter.uncompressedDex = a.shouldUncompressDex(ctx)
 	a.deviceProperties.UncompressDex = a.dexpreopter.uncompressedDex
 
-	if ctx.ModuleName() != "framework-res" && ctx.ModuleName() != "org.lineageos.platform-res" {
-		a.Module.compile(ctx, a.aaptSrcJar)
-	}
-
 	return a.maybeStrippedDexJarFile
 }
 
@@ -400,9 +396,6 @@ func (a *AndroidApp) generateAndroidBuildActions(ctx android.ModuleContext) {
 	var installDir android.OutputPath
 	if ctx.ModuleName() == "framework-res" {
 		// framework-res.apk is installed as system/framework/framework-res.apk
-		installDir = android.PathForModuleInstall(ctx, "framework")
-	} else if ctx.ModuleName() == "org.lineageos.platform-res" {
-		// org.lineageos.platform-res.apk needs to be in system/framework
 		installDir = android.PathForModuleInstall(ctx, "framework")
 	} else if Bool(a.appProperties.Privileged) {
 		installDir = android.PathForModuleInstall(ctx, "priv-app", a.installApkName)
